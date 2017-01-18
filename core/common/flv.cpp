@@ -43,21 +43,26 @@ int FLVStream::readPacket(Stream &in, Channel *ch)
 	bool headerUpdate = false;
 
 	if (ch->streamPos == 0) {
-		if (!fileHeader.read(in)) return 1;
+		bitrate = 0;
+		FLVFileHeader header = FLVFileHeader();
+		header.read(in);
+		fileHeader = header;
 		headerUpdate = true;
 	}
 
 	FLVTag flvTag;
-	if (!flvTag.read(in)) return 1;
+	flvTag.read(in);
 	
 	switch (flvTag.type)
 	{
 		case TAG_SCRIPTDATA:
 		{
 			AMFObject amf;
-			if (amf.readMetaData(flvTag)) {
-				metaData = flvTag;
+			MemoryStream flvmem = MemoryStream(flvTag.data, flvTag.size);
+			if (amf.readMetaData(flvmem)) {
+				flvmem.close();
 				bitrate = amf.bitrate;
+				metaData = flvTag;
 				headerUpdate = true;
 			}
 		}
@@ -80,43 +85,30 @@ int FLVStream::readPacket(Stream &in, Channel *ch)
 		}
 	}
 	
-	if (headerUpdate) {
+	if (headerUpdate && fileHeader.size>0) {
 		int len = fileHeader.size;
-		int offset = 0;
-
 		if (metaData.type==TAG_SCRIPTDATA) len += metaData.packetSize;
-		if (avcHeader.type == TAG_VIDEO)   len += avcHeader.packetSize;
-		if (aacHeader.type == TAG_AUDIO)   len += aacHeader.packetSize;
-
-		ch->headPack.init(ChanPacket::T_HEAD, ch->headPack.data, len, ch->streamPos);
-
-		if (fileHeader.size > 0) {
-			memcpy(ch->headPack.data + offset, fileHeader.data, fileHeader.size);
-			offset += fileHeader.size;
-		}
-		if (metaData.type == TAG_SCRIPTDATA) {
-			memcpy(ch->headPack.data + offset, metaData.packet, metaData.packetSize);
-			offset += metaData.packetSize;
-		}
-		if (avcHeader.type == TAG_VIDEO) {
-			memcpy(ch->headPack.data + offset, avcHeader.packet, avcHeader.packetSize);
-			offset += avcHeader.packetSize;
-		}
-		if (aacHeader.type == TAG_AUDIO) {
-			memcpy(ch->headPack.data + offset, aacHeader.packet, aacHeader.packetSize);
-			offset += aacHeader.packetSize;
-		}
+		if (avcHeader.type == TAG_VIDEO) len += avcHeader.packetSize;
+		if (aacHeader.type == TAG_AUDIO) len += aacHeader.packetSize;
+		MemoryStream mem = MemoryStream(ch->headPack.data, len);
+		mem.write(fileHeader.data, fileHeader.size);
+		if (metaData.type == TAG_SCRIPTDATA) mem.write(metaData.packet, metaData.packetSize);
+		if (avcHeader.type == TAG_VIDEO) mem.write(avcHeader.packet, avcHeader.packetSize);
+		if (aacHeader.type == TAG_AUDIO) mem.write(aacHeader.packet, aacHeader.packetSize);
 
 		ch->info.bitrate = bitrate;
 
 		ch->headPack.type = ChanPacket::T_HEAD;
-		ch->headPack.len = len;
+		ch->headPack.len = mem.pos;
 		ch->headPack.pos = ch->streamPos;
 		ch->newPacket(ch->headPack);
 
 		ch->streamPos += ch->headPack.len;
-	} else {
+	}
+	else {
 		ChanPacket pack;
+
+		MemoryStream mem = MemoryStream(flvTag.packet, flvTag.packetSize);
 
 		int rlen = flvTag.packetSize;
 		while (rlen)
@@ -126,10 +118,7 @@ int FLVStream::readPacket(Stream &in, Channel *ch)
 				rl = ChanMgr::MAX_METAINT;
 
 			pack.init(ChanPacket::T_DATA, pack.data, rl, ch->streamPos);
-
-			int offset = flvTag.packetSize - rlen;
-			memcpy(pack.data, flvTag.packet + offset, rl);
-
+			mem.read(pack.data, pack.len);
 			ch->newPacket(pack);
 			ch->checkReadDelay(pack.len);
 			ch->streamPos += pack.len;
@@ -137,7 +126,8 @@ int FLVStream::readPacket(Stream &in, Channel *ch)
 			rlen -= rl;
 		}
 
-		flvTag.dispose();
+		mem.close();
+		
 	}
 	
 	return 0;

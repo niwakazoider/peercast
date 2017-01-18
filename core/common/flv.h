@@ -141,19 +141,19 @@ public:
 class AMFObject
 {
 public:
-	static const int AMF_NUMBER      = 0x00;
-	static const int AMF_BOOL        = 0x01;
-	static const int AMF_STRING      = 0x02;
-	static const int AMF_OBJECT      = 0x03;
-	static const int AMF_MOVIECLIP   = 0x04;
-	static const int AMF_NULL        = 0x05;
-	static const int AMF_UNDEFINED   = 0x06;
-	static const int AMF_REFERENCE   = 0x07;
-	static const int AMF_ARRAY       = 0x08;
-	static const int AMF_OBJECT_END  = 0x09;
-	static const int AMF_STRICTARRAY = 0x0a;
-	static const int AMF_DATE        = 0x0b;
-	static const int AMF_LONG_STRING = 0x0c;
+	const int AMF_NUMBER      = 0x00;
+	const int AMF_BOOL        = 0x01;
+	const int AMF_STRING      = 0x02;
+	const int AMF_OBJECT      = 0x03;
+	const int AMF_MOVIECLIP   = 0x04;
+	const int AMF_NULL        = 0x05;
+	const int AMF_UNDEFINED   = 0x06;
+	const int AMF_REFERENCE   = 0x07;
+	const int AMF_ARRAY       = 0x08;
+	const int AMF_OBJECT_END  = 0x09;
+	const int AMF_STRICTARRAY = 0x0a;
+	const int AMF_DATE        = 0x0b;
+	const int AMF_LONG_STRING = 0x0c;
 
 	bool readBool(Stream &in)
 	{
@@ -200,11 +200,11 @@ public:
 			else {
 				if (strcmp(key, "audiodatarate") == 0) {
 					in.readChar();
-					bitrate += static_cast<int>(readDouble(in));
+					bitrate += readDouble(in);
 				}
 				else if (strcmp(key, "videodatarate") == 0) {
 					in.readChar();
-					bitrate += static_cast<int>(readDouble(in));
+					bitrate += readDouble(in);
 				}
 				else {
 					read(in);
@@ -214,9 +214,8 @@ public:
 		in.readChar();
 	}
 
-	bool readMetaData(FLVTag flvTag)
+	bool readMetaData(Stream &in)
 	{
-		MemoryStream in = MemoryStream(flvTag.data, flvTag.size);
 		char type = in.readChar();
 		if (type == AMF_STRING) {
 			char* name = readString(in);
@@ -225,7 +224,6 @@ public:
 				read(in);
 			}
 		}
-		in.close();
 		return bitrate > 0;
 	}
 
