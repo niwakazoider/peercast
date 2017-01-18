@@ -40,95 +40,92 @@ void FLVStream::readHeader(Stream &, Channel *)
 // ------------------------------------------
 int FLVStream::readPacket(Stream &in, Channel *ch)
 {
-	bool headerUpdate = false;
-
 	if (ch->streamPos == 0) {
 		bitrate = 0;
-		FLVFileHeader header = FLVFileHeader();
-		header.read(in);
-		fileHeader = header;
-		headerUpdate = true;
+		FLVFileHeader fileHeader = FLVFileHeader();
+		fileHeader.read(in);
+
+		char* header = (char *)malloc(8192);
+		int offset = 0;
+		memcpy(header, fileHeader.data, fileHeader.size);
+		offset += fileHeader.size;
+
+		for (int i = 0; i < 3; i++) {
+			FLVTag flvTag = FLVTag();
+			flvTag.read(in);
+
+			switch (flvTag.type) {
+			case TAG_SCRIPTDATA:
+			{
+				AMFObject amf;
+				if (amf.readMetaData(flvTag)) {
+					bitrate = amf.bitrate;
+					memcpy(header + offset, flvTag.packet, flvTag.packetSize);
+					offset += flvTag.packetSize;
+				}
+				break;
+			}
+			case TAG_VIDEO:
+			{
+				//AVC Header
+				if (flvTag.data[0] == 0x17 && flvTag.data[1] == 0x00 &&
+					flvTag.data[2] == 0x00 && flvTag.data[3] == 0x00) {
+					memcpy(header + offset, flvTag.packet, flvTag.packetSize);
+					offset += flvTag.packetSize;
+				}
+				break;
+			}
+			case TAG_AUDIO:
+			{
+				//AAC Header
+				if (flvTag.data[0] == 0xaf && flvTag.data[1] == 0x00) {
+					memcpy(header + offset, flvTag.packet, flvTag.packetSize);
+					offset += flvTag.packetSize;
+				}
+				break;
+			}
+			}
+		}
+
+		if (offset>0) {
+			ch->headPack.init(ChanPacket::T_HEAD, ch->headPack.data, offset, ch->streamPos);
+			memcpy(ch->headPack.data, header, offset);
+
+			ch->info.bitrate = bitrate;
+			ch->headPack.pos = ch->streamPos;
+			ch->newPacket(ch->headPack);
+
+			ch->streamPos += ch->headPack.len;
+		}
+
+		free(header);
 	}
+
 
 	FLVTag flvTag;
 	flvTag.read(in);
-	
-	switch (flvTag.type)
+
+	ChanPacket pack;
+
+	MemoryStream mem(flvTag.packet, flvTag.packetSize);
+
+	int rlen = flvTag.packetSize;
+	while (rlen)
 	{
-		case TAG_SCRIPTDATA:
-		{
-			AMFObject amf;
-			MemoryStream flvmem = MemoryStream(flvTag.data, flvTag.size);
-			if (amf.readMetaData(flvmem)) {
-				flvmem.close();
-				bitrate = amf.bitrate;
-				metaData = flvTag;
-				headerUpdate = true;
-			}
-		}
-		case TAG_VIDEO:
-		{
-			//AVC Header
-			if (flvTag.data[0] == 0x17 && flvTag.data[1] == 0x00 &&
-				flvTag.data[2] == 0x00 && flvTag.data[3] == 0x00) {
-				avcHeader = flvTag;
-				headerUpdate = true;
-			}
-		}
-		case TAG_AUDIO:
-		{
-			//AAC Header
-			if (flvTag.data[0] == 0xaf && flvTag.data[1] == 0x00) {
-				aacHeader = flvTag;
-				headerUpdate = true;
-			}
-		}
+		int rl = rlen;
+		if (rl > ChanMgr::MAX_METAINT)
+			rl = ChanMgr::MAX_METAINT;
+
+		pack.init(ChanPacket::T_DATA, pack.data, rl, ch->streamPos);
+		mem.read(pack.data, pack.len);
+		ch->newPacket(pack);
+		ch->checkReadDelay(pack.len);
+		ch->streamPos += pack.len;
+
+		rlen -= rl;
 	}
-	
-	if (headerUpdate && fileHeader.size>0) {
-		int len = fileHeader.size;
-		if (metaData.type==TAG_SCRIPTDATA) len += metaData.packetSize;
-		if (avcHeader.type == TAG_VIDEO) len += avcHeader.packetSize;
-		if (aacHeader.type == TAG_AUDIO) len += aacHeader.packetSize;
-		MemoryStream mem = MemoryStream(ch->headPack.data, len);
-		mem.write(fileHeader.data, fileHeader.size);
-		if (metaData.type == TAG_SCRIPTDATA) mem.write(metaData.packet, metaData.packetSize);
-		if (avcHeader.type == TAG_VIDEO) mem.write(avcHeader.packet, avcHeader.packetSize);
-		if (aacHeader.type == TAG_AUDIO) mem.write(aacHeader.packet, aacHeader.packetSize);
 
-		ch->info.bitrate = bitrate;
+	mem.close();
 
-		ch->headPack.type = ChanPacket::T_HEAD;
-		ch->headPack.len = mem.pos;
-		ch->headPack.pos = ch->streamPos;
-		ch->newPacket(ch->headPack);
-
-		ch->streamPos += ch->headPack.len;
-	}
-	else {
-		ChanPacket pack;
-
-		MemoryStream mem = MemoryStream(flvTag.packet, flvTag.packetSize);
-
-		int rlen = flvTag.packetSize;
-		while (rlen)
-		{
-			int rl = rlen;
-			if (rl > ChanMgr::MAX_METAINT)
-				rl = ChanMgr::MAX_METAINT;
-
-			pack.init(ChanPacket::T_DATA, pack.data, rl, ch->streamPos);
-			mem.read(pack.data, pack.len);
-			ch->newPacket(pack);
-			ch->checkReadDelay(pack.len);
-			ch->streamPos += pack.len;
-
-			rlen -= rl;
-		}
-
-		mem.close();
-		
-	}
-	
 	return 0;
 }

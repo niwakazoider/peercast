@@ -1,8 +1,8 @@
-CPPFLAGS = -DENABLE_BINRELOC -pthread  -D__cplusplus -D_UNIX -D_REENTRANT $(INCLUDES) 
+CPPFLAGS = -std=c++11 -DENABLE_BINRELOC -pthread  -D__cplusplus -D_UNIX -D_REENTRANT $(INCLUDES)
 LDFLAGS = -pthread 
 LDSOFLAGS = -shared -Wl,-soname
 
-#CPPFLAGS = -static -pthread -D__cplusplus -D_UNIX -D_LINUX_STATIC -D_REENTRANT $(INCLUDES)
+#CPPFLAGS = -std=c++11 -static -pthread -D__cplusplus -D_UNIX -D_LINUX_STATIC -D_REENTRANT $(INCLUDES)
 #LDFLAGS = -static -pthread 
 
 LD = g++
@@ -44,7 +44,8 @@ CORESOURCE = $(CORE)/unix/usys.cpp \
 	 $(CORE)/common/url.cpp \
 	 $(CORE)/common/icy.cpp \
 	 $(CORE)/common/pcp.cpp \
-	 $(CORE)/common/jis.cpp 
+	 $(CORE)/common/jis.cpp \
+	 $(CORE)/common/flv.cpp
 
 
 
