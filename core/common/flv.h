@@ -153,17 +153,43 @@ public:
 class FLVStream : public ChannelStream
 {
 public:
+
 	int bitrate = 0;
+	SYSTEMTIME st;
+	unsigned char* cacheMem;
+	MemoryStream cache;
 	FLVFileHeader fileHeader;
 	FLVTag metaData;
 	FLVTag aacHeader;
 	FLVTag avcHeader;
 	FLVStream()
 	{
+		cacheMem = new unsigned char[1024*1024];
+		cache = MemoryStream(cacheMem, 1024*1024);
+		GetSystemTime(&st);
+	}
+	~FLVStream()
+	{
+		cache.close();
+		delete[] cacheMem;
 	}
 	virtual void readHeader(Stream &, Channel *);
 	virtual int	 readPacket(Stream &, Channel *);
 	virtual void readEnd(Stream &, Channel *);
+
+	__int64 diffTimeMilliseconds(SYSTEMTIME time1, SYSTEMTIME time2)
+	{
+		FILETIME ftime1;
+		FILETIME ftime2;
+
+		SystemTimeToFileTime(&time1, &ftime1);
+		SystemTimeToFileTime(&time2, &ftime2);
+
+		__int64* nTime1 = (__int64*)&ftime1;
+		__int64* nTime2 = (__int64*)&ftime2;
+
+		return (*nTime1 - *nTime2) / 10000;
+	}
 };
 
 class AMFObject
@@ -228,11 +254,11 @@ public:
 			else {
 				if (strcmp(key, "audiodatarate") == 0) {
 					in.readChar();
-					bitrate += readDouble(in);
+					bitrate += static_cast<int>(readDouble(in));
 				}
 				else if (strcmp(key, "videodatarate") == 0) {
 					in.readChar();
-					bitrate += readDouble(in);
+					bitrate += static_cast<int>(readDouble(in));
 				}
 				else {
 					read(in);

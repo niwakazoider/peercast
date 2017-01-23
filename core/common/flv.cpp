@@ -106,11 +106,22 @@ int FLVStream::readPacket(Stream &in, Channel *ch)
 		ch->streamPos += ch->headPack.len;
 	}
 	else {
+
+		SYSTEMTIME now;
+		GetSystemTime(&now);
+
+		cache.write(flvTag.packet, flvTag.packetSize);
+
+		__int64 diff = FLVStream::diffTimeMilliseconds(now, st);
+
+		if (diff<100 && cache.pos<8192) {
+			return 0;
+		}
+
 		ChanPacket pack;
 
-		MemoryStream mem(flvTag.packet, flvTag.packetSize);
-
-		int rlen = flvTag.packetSize;
+		int rlen = cache.pos;
+		cache.pos = 0;
 		while (rlen)
 		{
 			int rl = rlen;
@@ -118,15 +129,16 @@ int FLVStream::readPacket(Stream &in, Channel *ch)
 				rl = ChanPacket::MAX_DATALEN;
 
 			pack.init(ChanPacket::T_DATA, pack.data, rl, ch->streamPos);
-			mem.read(pack.data, pack.len);
+			cache.read(pack.data, pack.len);
 			ch->newPacket(pack);
 			ch->checkReadDelay(pack.len);
 			ch->streamPos += pack.len;
 
 			rlen -= rl;
 		}
+		cache.pos = 0;
 
-		mem.close();
+		GetSystemTime(&st);
 		
 	}
 	
